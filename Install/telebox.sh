@@ -268,55 +268,41 @@ install_pm2() {
     pm2 install pm2-logrotate >/dev/null 2>&1 || true
 }
 
-# 创建 PM2 配置文件
-create_pm2_config() {
-    local install_dir="$1"
-    
-    local official_pm2_config="$install_dir/ecosystem.config.cjs"
-
-    mkdir -p "$install_dir/logs"
-
-    if [ ! -f "$official_pm2_config" ]; then
-        log_error "未找到官方 PM2 配置: $official_pm2_config"
-        exit 1
-    fi
-}
-
 # 配置系统服务
 setup_service() {
     local install_dir="$1"
     
-    log_info "配置系统服务..."
+    log_info "正在配置 PM2 后台运行..."
     
-    create_pm2_config "$install_dir"
-    
-    cd "$install_dir" && pm2 start ecosystem.config.cjs && pm2 save || {
-        log_error "服务启动失败"
+    cd "$install_dir" && pm2 delete telebox >/dev/null 2>&1 || true
+    cd "$install_dir" && pm2 start "npm start" --name telebox && pm2 save || {
+        log_error "PM2 服务启动失败"
         exit 1
     }
     
-    # 尝试设置开机自启
     if pm2 startup >/dev/null 2>&1; then
         startup_cmd=$(pm2 startup | tail -n 1)
         [ -n "$startup_cmd" ] && eval "$startup_cmd" >/dev/null 2>&1 || true
     fi
     
-    log_success "服务配置完成"
+    log_success "PM2 后台运行已配置完成"
 }
 
 prompt_pm2_setup() {
     local install_dir="$1"
 
     echo ""
-    read -p "是否现在设置 PM2 后台运行? [Y/n] " -n 1 -r
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "推荐开启 PM2 后台运行，这样 TeleBox 在退出终端后也能继续运行。"
+    read -p "是否现在启用 PM2 后台运行？ [Y/n] " -n 1 -r
     echo
 
     if [[ $REPLY =~ ^[Nn]$ ]]; then
-        log_info "已跳过 PM2 配置"
+        log_info "已跳过 PM2 配置，可稍后手动开启"
         echo ""
-        echo "如需稍后手动设置，可执行："
+        echo "手动开启方式："
         echo "  npm install -g pm2"
-        echo "  cd $install_dir && pm2 start ecosystem.config.cjs && pm2 save"
+        echo "  cd $install_dir && pm2 start \"npm start\" --name telebox && pm2 save"
         return 1
     fi
 
@@ -325,48 +311,50 @@ prompt_pm2_setup() {
     return 0
 }
 
-# 显示使用说明
 show_usage() {
     local install_dir="$1"
     local pm2_enabled="${2:-false}"
     
     echo ""
     echo "🎉 TeleBox 安装完成！"
-    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "📁 项目目录: $install_dir"
     echo ""
 
     if [[ "$pm2_enabled" == "true" ]]; then
-        echo "📋 PM2 使用命令:"
-        echo "   pm2 status                   # 查看状态"
-        echo "   pm2 logs telebox             # 查看日志"
-        echo "   pm2 restart telebox          # 重启服务"
-    else
-        echo "📋 启动方式:"
-        echo "   cd $install_dir && npm start # 前台启动 TeleBox"
+        echo "✅ 当前状态：已启用 PM2 后台运行"
         echo ""
-        echo "📋 如需 PM2 后台运行:"
-        echo "   npm install -g pm2"
-        echo "   cd $install_dir && pm2 start ecosystem.config.cjs && pm2 save"
+        echo "常用命令："
+        echo "  pm2 status           # 查看运行状态"
+        echo "  pm2 logs telebox     # 查看实时日志"
+        echo "  pm2 restart telebox  # 重启 TeleBox"
+        echo "  pm2 stop telebox     # 停止 TeleBox"
+    else
+        echo "ℹ️ 当前状态：未启用 PM2，TeleBox 不会在后台常驻运行"
+        echo ""
+        echo "前台启动方式："
+        echo "  cd $install_dir && npm start"
+        echo ""
+        echo "如需稍后启用 PM2："
+        echo "  npm install -g pm2"
+        echo "  cd $install_dir && pm2 start \"npm start\" --name telebox && pm2 save"
     fi
 
     echo ""
 }
 
-# 重置 PM2 配置
 reset_pm2_config() {
     local install_dir="$1"
     
-    log_info "重置 PM2 配置..."
+    log_info "正在重置 PM2 配置..."
     
     pm2 delete telebox 2>/dev/null || true
-    create_pm2_config "$install_dir"
-    cd "$install_dir" && pm2 start ecosystem.config.cjs && pm2 save || {
-        log_error "重置失败"
+    cd "$install_dir" && pm2 start "npm start" --name telebox && pm2 save || {
+        log_error "PM2 配置重置失败"
         return 1
     }
     
-    log_success "PM2 配置重置完成"
+    log_success "PM2 配置已重置完成"
 }
 
 # 重新登录

@@ -212,16 +212,14 @@ build_docker() {
 start_docker_interactive() {
     echo
     echo "=========================================="
-    echo "第一阶段：交互式安装 TeleBox"
+    echo "第一阶段：交互式登录 TeleBox"
     echo "=========================================="
     echo
-    echo "正在启动容器进行配置 . . ."
-    echo "请注意：接下来需要您根据官方流程登录 Telegram 账号"
-    echo "首次启动时需要填写 api_id / api_hash，并选择二维码或手机号登录"
+    echo "正在启动临时容器，请根据提示完成首次登录..."
+    echo "登录时需要填写 api_id / api_hash，并选择二维码或手机号登录"
     echo
-    sleep 3
+    sleep 2
     
-    # 第一步：交互式安装
     docker run -it --name "$container_name" --restart unless-stopped \
         -v "/root/Docker_Telebox/$container_name":/root --pull always debian:12 \
         bash -lc "set -e; \
@@ -240,20 +238,20 @@ start_docker_interactive() {
         npm start"
     
     echo
-    echo "配置完成，正在进入后台运行模式 . . ."
-    sleep 2
+    echo "首次登录阶段已结束。"
+    echo
 }
 
 start_docker_daemon() {
     echo
     echo "=========================================="
-    echo "第二阶段：启动后台服务"
+    echo "第二阶段：启用 PM2 后台运行"
     echo "=========================================="
     echo
     
     docker rm -f "$container_name" > /dev/null 2>&1
     
-    echo "正在以后台模式启动 TeleBox . . ."
+    echo "正在启动后台容器，请稍候..."
     docker run -d --name "$container_name" --restart unless-stopped \
         -v "/root/Docker_Telebox/$container_name":/root --pull always debian:12 \
         bash -lc "set -e; \
@@ -266,13 +264,17 @@ start_docker_daemon() {
         if [ ! -d /root/telebox/.git ]; then git clone https://github.com/TeleBoxOrg/TeleBox.git /root/telebox; fi; \
         cd /root/telebox; \
         npm install; \
-        exec pm2-runtime start npm --name telebox -- start"
+        pm2 delete telebox >/dev/null 2>&1 || true; \
+        pm2 start \"npm start\" --name telebox; \
+        pm2 save; \
+        exec pm2-runtime resurrect"
     
     echo
     echo "=========================================="
     echo "TeleBox 安装完成！"
     echo "=========================================="
     echo
+    echo "✅ 当前状态：已启用 PM2 后台运行"
     echo "容器名称: $container_name"
     echo "数据目录: /root/Docker_Telebox/$container_name"
     echo
@@ -281,11 +283,10 @@ start_docker_daemon() {
     echo "  容器内: /root/telebox"
     echo
     echo "常用命令："
-    echo "  查看日志: docker logs -f $container_name"
-    echo "  进入容器: docker exec -it $container_name bash"
-    echo "  重启容器: docker restart $container_name"
-    echo "  停止容器: docker stop $container_name"
-    echo "  查看文件: ls -la /root/Docker_Telebox/$container_name/telebox"
+    echo "  docker logs -f $container_name      # 查看容器日志"
+    echo "  docker restart $container_name      # 重启容器"
+    echo "  docker stop $container_name         # 停止容器"
+    echo "  docker exec -it $container_name bash # 进入容器"
     echo
 }
 
@@ -295,11 +296,10 @@ finish_without_pm2() {
     echo "TeleBox 安装完成！"
     echo "=========================================="
     echo
-    echo "已跳过 PM2 后台运行设置。"
-    echo "当前已完成首次登录，数据已保存在：/root/Docker_Telebox/$container_name"
+    echo "ℹ️ 当前状态：未启用 PM2 后台运行"
+    echo "首次登录数据已保存在：/root/Docker_Telebox/$container_name"
     echo
-    echo "如需稍后启用后台运行，可重新执行脚本并选择安装，或参考以下命令自行启动容器："
-    echo "  docker run -d --name $container_name --restart unless-stopped -v /root/Docker_Telebox/$container_name:/root --pull always debian:12 bash -lc 'set -e; apt-get update; apt-get install -y curl git build-essential ca-certificates gnupg sudo; update-ca-certificates; curl -fsSL https://deb.nodesource.com/setup_24.x | bash -; apt-get install -y nodejs; npm install -g pm2; if [ ! -d /root/telebox/.git ]; then git clone https://github.com/TeleBoxOrg/TeleBox.git /root/telebox; fi; cd /root/telebox; npm install; exec pm2-runtime start npm --name telebox -- start'"
+    echo "如果之后希望改为后台常驻运行，可重新执行脚本并选择启用 PM2。"
     echo
 }
 
@@ -310,7 +310,8 @@ start_installation() {
     build_docker
     start_docker_interactive
 
-    printf "是否现在设置 PM2 后台运行? [Y/n]: "
+    echo "推荐开启 PM2 后台运行，这样容器会自动以守护模式持续运行。"
+    printf "是否现在启用 PM2 后台运行？ [Y/n]: "
     read -r enable_pm2 <&1
 
     case $enable_pm2 in
